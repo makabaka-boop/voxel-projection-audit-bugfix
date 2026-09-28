@@ -2,6 +2,8 @@
   import { createEventDispatcher } from 'svelte';
 
   export let title: string;
+  export let nameI: string; // 横轴（第一轴 i）名称
+  export let nameJ: string; // 纵轴（第二轴 j）名称
   export let na: number;
   export let nb: number;
   export let grid: boolean[][]; // grid[i][j]
@@ -9,39 +11,54 @@
   const dispatch = createEventDispatcher<{ toggle: { i: number; j: number } }>();
 
   const cell = 38;
-  const padL = 30;
-  const padT = 10;
-  const padR = 10;
-  const padB = 30;
+  const padL = 34;
+  const padT = 16;
+  const padR = 14;
+  const padB = 36;
 
   $: w = padL + na * cell + padR;
   $: h = padT + nb * cell + padB;
+
+  // 第 j 行在画面上自下而上排列
+  const rowY = (j: number) => padT + (nb - 1 - j) * cell;
+  const colX = (i: number) => padL + i * cell;
 </script>
 
 <figure class="plane">
   <figcaption>{title} <span class="dims">{na}×{nb}</span></figcaption>
-  <svg width={w} {h} viewBox="0 0 {w} {h}">
+  <svg width={w} height={h} viewBox="0 0 {w} {h}">
+    <!-- 纵轴（第二轴 j）标记 -->
+    <text class="axis-name" x={4} y={padT + 2}>{nameJ}</text>
+    {#each Array(nb) as _, j}
+      <text class="tick" x={padL - 8} y={rowY(j) + cell / 2 + 4.5}>{j}</text>
+    {/each}
+
+    <!-- 横轴（第一轴 i）标记 -->
+    <text class="axis-name" x={padL + na * cell + 4} y={padT + nb * cell + 20}>{nameI}</text>
+    {#each Array(na) as _, i}
+      <text class="tick" x={colX(i) + cell / 2} y={padT + nb * cell + 20}>{i}</text>
+    {/each}
+
     {#each Array(na) as _, i}
       {#each Array(nb) as _, j}
         <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-        <g class="cell" on:click={() => dispatch('toggle', { i, j: nb - 1 - j })}>
+        <g class="cell" on:click={() => dispatch('toggle', { i, j })}>
           <rect
-            x={padL + i * cell + 1.5}
-            y={padT + (nb - 1 - j) * cell + 1.5}
+            x={colX(i) + 1.5}
+            y={rowY(j) + 1.5}
             width={cell - 3}
             height={cell - 3}
             rx="6"
             class:filled={grid[i][j]}
           />
           <text
-            x={padL + i * cell + cell / 2}
-            y={padT + (nb - 1 - j) * cell + cell / 2 + 5}
+            x={colX(i) + cell / 2}
+            y={rowY(j) + cell / 2 + 5}
             class:on={grid[i][j]}>{grid[i][j] ? 1 : 0}</text
           >
         </g>
       {/each}
     {/each}
-
   </svg>
 </figure>
 
@@ -63,6 +80,17 @@
     font-weight: 400;
     color: #64748b;
     font-size: 12px;
+  }
+  .axis-name {
+    font-size: 13px;
+    font-weight: 700;
+    fill: #475569;
+  }
+  .tick {
+    font-size: 12px;
+    text-anchor: middle;
+    fill: #64748b;
+    user-select: none;
   }
   .cell {
     cursor: pointer;

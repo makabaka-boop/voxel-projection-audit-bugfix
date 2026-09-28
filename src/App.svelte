@@ -5,6 +5,7 @@
   import {
     solve,
     candidates,
+    projectionsOf,
     type SolveResult,
     type Grid,
     type PlaneId,
@@ -24,8 +25,9 @@
   let result: SolveResult | null = null;
   let candCount = 0;
 
-  // 任何编辑都清除旧结论
+  // 任何编辑都清除旧结论（三维预览随之清空）
   function invalidate() {
+    result = null;
     candCount = candidates({ nx, ny, nz }, xy, xz, yz).length;
   }
 
@@ -62,12 +64,33 @@
     candCount = candidates(dims, xy, xz, yz).length;
   }
 
-  onMount(rebuild);
+  onMount(() => {
+    candCount = candidates({ nx, ny, nz }, xy, xz, yz).length;
+    rebuild();
+  });
 
   function cellDesc(plane: PlaneId, i: number, j: number): string {
-    if (plane === 'xy') return `x=${i}, y=${j}`;
-    if (plane === 'xz') return `x=${i}, z=${j}`;
-    return `y=${i}, z=${j}`;
+    if (plane === 'xy') return `XY 面 (x=${i}, y=${j})`;
+    if (plane === 'xz') return `XZ 面 (x=${i}, z=${j})`;
+    return `YZ 面 (y=${i}, z=${j})`;
+  }
+
+  // 求解后核对：结果体素的三向投影必须与输入逐格一致
+  $: projectionCheck =
+    result && result.ok
+      ? checkProjections(result.voxels)
+      : null;
+
+  function gridsEqual(a: boolean[][], b: boolean[][]): boolean {
+    return a.length === b.length &&
+      a.every((row, i) => row.length === b[i].length && row.every((v, j) => v === b[i][j]));
+  }
+
+  function checkProjections(voxels: { x: number; y: number; z: number }[]) {
+    const p = projectionsOf({ nx, ny, nz }, voxels);
+    return (
+      gridsEqual(p.xy, xy) && gridsEqual(p.xz, xz) && gridsEqual(p.yz, yz)
+    );
   }
 </script>
 
@@ -101,12 +124,15 @@
       </select>
     </label>
     <button on:click={rebuild}>重建</button>
+    <span class="cand">三向都为 1 的候选体素：{candCount}</span>
   </section>
 
   <div class="layout">
     <section class="planes">
       <PlaneGrid
         title="XY 投影"
+        nameI="x"
+        nameJ="y"
         na={nx}
         nb={ny}
         grid={xy}
@@ -114,6 +140,8 @@
       />
       <PlaneGrid
         title="XZ 投影"
+        nameI="x"
+        nameJ="z"
         na={nx}
         nb={nz}
         grid={xz}
@@ -121,6 +149,8 @@
       />
       <PlaneGrid
         title="YZ 投影"
+        nameI="y"
+        nameJ="z"
         na={ny}
         nb={nz}
         grid={yz}
@@ -133,11 +163,34 @@
 
       <div class="result">
         {#if result === null}
-          <p class="muted">点击「重建」生成模型。</p>
+          <p class="muted">投影已修改，旧结论已清除。点击「重建」生成模型。</p>
         {:else if result.ok}
-          <p class="ok">体素数：{result.voxels.length}</p>
+          <p class="ok">
+            求解成功：最少体素数 <strong>{result.voxels.length}</strong>
+            （候选体素共 {candCount} 个）
+          </p>
+          <p class="check {projectionCheck ? 'ok2' : 'bad'}">
+            投影核对：{projectionCheck ? '结果的 XY / XZ / YZ 投影与输入逐格一致 ✓' : '投影不一致（不应发生）✗'}
+          </p>
+          <p class="label">体素坐标（按 x, y, z 字典序）：</p>
+          {#if result.voxels.length === 0}
+            <p class="muted">空集（三张投影全为 0）。</p>
+          {:else}
+            <ul class="voxels">
+              {#each result.voxels as v}
+                <li><code>({v.x}, {v.y}, {v.z})</code></li>
+              {/each}
+            </ul>
+          {/if}
         {:else}
-          <p class="bad">无解</p>
+          <p class="bad"><strong>无解</strong></p>
+          <p class="bad">
+            首个无任何候选体素支撑的为 1 投影格：<code>{cellDesc(result.unsupported.plane, result.unsupported.i, result.unsupported.j)}</code>
+          </p>
+          <p class="muted">
+            判定顺序：XY → XZ → YZ；面内第二轴升序、同行第一轴升序。该格为 1，但不存在三向投影对应格都为
+            1 的体素覆盖它，故没有模型能同时满足三张投影。
+          </p>
         {/if}
       </div>
     </section>
@@ -200,6 +253,10 @@
   button:hover {
     background: #1d4ed8;
   }
+  .cand {
+    font-size: 12.5px;
+    color: #64748b;
+  }
   .layout {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -232,8 +289,17 @@
   .result p {
     margin: 4px 0;
   }
+  .label {
+    color: #334155;
+    font-size: 13px;
+    margin-top: 8px;
+  }
   .ok {
     color: #15803d;
+  }
+  .ok2 {
+    color: #15803d;
+    font-size: 13px;
   }
   .bad {
     color: #b91c1c;
@@ -257,8 +323,11 @@
     border-radius: 6px;
     padding: 2px 8px;
   }
-  .voxels code {
+  .voxels code, .result code {
     font-size: 13px;
     color: #1e40af;
+  }
+  .result .bad code {
+    color: #b91c1c;
   }
 </style>
