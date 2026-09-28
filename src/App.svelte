@@ -24,8 +24,9 @@
   let result: SolveResult | null = null;
   let candCount = 0;
 
-  // 任何编辑都清除旧结论
+  // 任何编辑都清除旧结论（等轴图随之回到占位状态）
   function invalidate() {
+    result = null;
     candCount = candidates({ nx, ny, nz }, xy, xz, yz).length;
   }
 
@@ -65,10 +66,15 @@
   onMount(rebuild);
 
   function cellDesc(plane: PlaneId, i: number, j: number): string {
-    if (plane === 'xy') return `x=${i}, y=${j}`;
-    if (plane === 'xz') return `x=${i}, z=${j}`;
-    return `y=${i}, z=${j}`;
+    if (plane === 'xy') return `XY(${i}, ${j})，即 x=${i}, y=${j}`;
+    if (plane === 'xz') return `XZ(${i}, ${j})，即 x=${i}, z=${j}`;
+    return `YZ(${i}, ${j})，即 y=${i}, z=${j}`;
   }
+
+  $: markedCell =
+    result && !result.ok
+      ? { plane: result.unsupported.plane, i: result.unsupported.i, j: result.unsupported.j }
+      : null;
 </script>
 
 <main>
@@ -106,24 +112,33 @@
   <div class="layout">
     <section class="planes">
       <PlaneGrid
-        title="XY 投影"
+        title="XY 投影（沿 Z 看）"
         na={nx}
         nb={ny}
         grid={xy}
+        axisI="x"
+        axisJ="y"
+        marked={markedCell && markedCell.plane === 'xy' ? markedCell : null}
         on:toggle={(e) => toggle('xy', e.detail.i, e.detail.j)}
       />
       <PlaneGrid
-        title="XZ 投影"
+        title="XZ 投影（沿 Y 看）"
         na={nx}
         nb={nz}
         grid={xz}
+        axisI="x"
+        axisJ="z"
+        marked={markedCell && markedCell.plane === 'xz' ? markedCell : null}
         on:toggle={(e) => toggle('xz', e.detail.i, e.detail.j)}
       />
       <PlaneGrid
-        title="YZ 投影"
+        title="YZ 投影（沿 X 看）"
         na={ny}
         nb={nz}
         grid={yz}
+        axisI="y"
+        axisJ="z"
+        marked={markedCell && markedCell.plane === 'yz' ? markedCell : null}
         on:toggle={(e) => toggle('yz', e.detail.i, e.detail.j)}
       />
     </section>
@@ -133,11 +148,26 @@
 
       <div class="result">
         {#if result === null}
-          <p class="muted">点击「重建」生成模型。</p>
+          <p class="muted">投影已编辑，旧结论已清除。点击「重建」生成模型。</p>
+          <p class="muted">当前候选体素（三张投影对应格均为 1）：{candCount} 个</p>
         {:else if result.ok}
-          <p class="ok">体素数：{result.voxels.length}</p>
+          <p class="ok">✓ 有解：最少占用 {result.voxels.length} 个体素</p>
+          <p class="muted">候选体素共 {candCount} 个；下列坐标已按 (x, y, z) 排序：</p>
+          {#if result.voxels.length === 0}
+            <p class="muted">（空模型，三张投影均为全 0）</p>
+          {:else}
+            <ul class="voxels">
+              {#each result.voxels as v}
+                <li><code>({v.x}, {v.y}, {v.z})</code></li>
+              {/each}
+            </ul>
+          {/if}
         {:else}
-          <p class="bad">无解</p>
+          <p class="bad">✗ 无解：{cellDesc(result.unsupported.plane, result.unsupported.i, result.unsupported.j)}</p>
+          <p class="muted">
+            该投影格为 1，但不存在任何三张投影对应格均为 1 的候选体素覆盖它
+            （左侧红框标出；判定顺序：XY → XZ → YZ，面内第二轴升序、同行第一轴升序）。
+          </p>
         {/if}
       </div>
     </section>
@@ -234,13 +264,15 @@
   }
   .ok {
     color: #15803d;
+    font-weight: 600;
   }
   .bad {
     color: #b91c1c;
+    font-weight: 600;
     line-height: 1.6;
   }
   .muted {
-    color: #94a3b8;
+    color: #64748b;
     font-size: 13px;
   }
   .voxels {
